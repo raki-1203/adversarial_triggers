@@ -102,10 +102,8 @@ def train(train_df, valid_df, train_label, valid_label, args):
 
     # train model
     trainer.train()
-    save_dir = increment_path(os.path.join('./best_model', args.run_name))
-    if not os.path.isdir(save_dir):
-        os.makedirs(save_dir, exist_ok=True)
-    torch.save(model.state_dict(), os.path.join(save_dir, 'model.pt'))
+    save_dir = increment_path(os.path.join('./best_model', args.model_name_or_path.split('/')[-1], args.run_name))
+    model.save_pretrained(save_dir)
 
     # 마지막 최종 best model 로 평가한 결과 저장해서 return
     eval_result = trainer.evaluate(valid_dataset)
