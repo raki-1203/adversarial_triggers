@@ -18,6 +18,7 @@ An easy way to install the code is to create a fresh anaconda environment:
 conda create -n triggers python=3.6
 source activate triggers
 pip install -r requirements.txt
+pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113
 ```
 Now you should be ready to go!
 
