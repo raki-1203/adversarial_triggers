@@ -1,15 +1,15 @@
-import numpy as np
 import os
 import sys
 import argparse
 
+import numpy as np
 import pandas as pd
 import torch
 import torch.nn.functional as F
-from sklearn.metrics import accuracy_score
 
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from sklearn.metrics import accuracy_score
 from transformers import (
     AutoConfig,
     AutoTokenizer,
@@ -19,12 +19,9 @@ from transformers import (
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from utils import (
-    seed_everything,
     load_data,
     tokenized_dataset,
     SentimentClassificationDataset,
-    increment_path,
-    compute_metrics,
 )
 
 
