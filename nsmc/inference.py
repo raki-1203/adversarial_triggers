@@ -45,9 +45,8 @@ def inference(test_df, test_label, args):
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
 
     # model load
-    model = AutoModelForSequenceClassification.from_pretrained(args.model_name_or_path, config=model_config)
-    model.load_state_dict(torch.load(os.path.join(best_model_path, args.model_name_or_path.split('/')[-1],
-                                                  args.run_name, 'model.pt')))
+    best_model_dir = os.path.join(best_model_path, args.model_name_or_path.split('/')[-1], args.run_name)
+    model = AutoModelForSequenceClassification.from_pretrained(best_model_dir)
     model.to(device)
 
     # tokenizing dataset

@@ -32,7 +32,7 @@ os.environ['WANDB_SILENT'] = "true"
 
 # gpu setting
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # Arrange GPU devices starting from 0
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Set the GPU 0 to use
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"  # Set the GPU 0 to use
 
 
 def train(train_df, valid_df, train_label, valid_label, args):
@@ -102,7 +102,7 @@ def train(train_df, valid_df, train_label, valid_label, args):
 
     # train model
     trainer.train()
-    save_dir = increment_path(os.path.join('./best_model', args.model_name_or_path.split('/')[-1], args.run_name))
+    save_dir = increment_path(os.path.join('./best_model', args.run_name))
     model.save_pretrained(save_dir)
 
     # 마지막 최종 best model 로 평가한 결과 저장해서 return
