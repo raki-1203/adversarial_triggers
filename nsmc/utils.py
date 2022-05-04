@@ -1,4 +1,6 @@
+import os
 import heapq
+import pickle
 import random
 import numpy as np
 import pandas as pd
@@ -59,10 +61,10 @@ def get_average_grad(args, device, model, batch, trigger_token_ids, target_label
         batch['labels'] = int(target_label) * torch.ones_like(batch['labels']).cuda()
     global extracted_grads
     extracted_grads = []  # clear existing stored grads
-    _, loss = evaluate_batch(args, device, model, batch, trigger_token_ids)
+    _, loss = evaluate_batch(args, device, model, batch, trigger_token_ids, is_backward=True)
     loss.backward()
     # index 0 has the hypothesis grads for SNLI. For SST, the list is of size 1.
-    grads = extracted_grads[0].cpu()
+    grads = extracted_grads[0].cpu().detach()
     batch['labels'] = original_labels  # reset labels
 
     # average grad across batch size, result only makes sense for trigger tokens at the front
@@ -105,13 +107,11 @@ def get_loss_per_candidate(args, device, index, model, batch, trigger_token_ids,
     loss_per_candidate = []
     # loss for the trigger without trying the candidates
     _, curr_loss = evaluate_batch(args, device, model, batch, trigger_token_ids)
-    curr_loss = curr_loss.cpu().detach().numpy()
     loss_per_candidate.append((deepcopy(trigger_token_ids), curr_loss))
     for cand_id in range(len(cand_trigger_token_ids[0])):
         trigger_token_ids_one_replaced = deepcopy(trigger_token_ids)  # copy trigger
         trigger_token_ids_one_replaced[index] = cand_trigger_token_ids[index][cand_id]  # replace one token
         _, loss = evaluate_batch(args, device, model, batch, trigger_token_ids_one_replaced)
-        loss = loss.cpu().detach().numpy()
         loss_per_candidate.append((deepcopy(trigger_token_ids_one_replaced), loss))
     return loss_per_candidate
 
@@ -156,8 +156,10 @@ def get_accuracy(args, device, model, valid_dataset, index_to_word_dict, trigger
         print(f"Accuracy (Current Triggers: {print_string}): {accuracy}")
         print('*' * 50)
 
+        return accuracy, print_string
 
-def evaluate_batch(args, device, model, batch, trigger_token_ids=None):
+
+def evaluate_batch(args, device, model, batch, trigger_token_ids=None, is_backward=False):
     """
     If trigger_token_ids is not None, then it will append the tokens to the input.
     This funtion is used to get the model's accuracy and/or the loss with/without the trigger.
@@ -189,6 +191,8 @@ def evaluate_batch(args, device, model, batch, trigger_token_ids=None):
         label = batch['labels'].to(device)
         criterion = nn.CrossEntropyLoss()
         loss = criterion(logits, label)
+        if not is_backward:
+            loss = loss.detach().cpu().numpy()
         logits = logits.detach().cpu().numpy()
         result = np.argmax(logits, axis=-1)
         return result, loss
@@ -291,5 +295,12 @@ def get_token_index(tokenizer, word):
     return tokenizer.vocab.get(word, 3)
 
 
+def load_pickle_file(path, filename):
+    with open(f'{os.path.join(path, filename)}.pkl', 'rb') as f:
+        return pickle.load(f)
 
+
+def save_pickle_file(path, filename, obj):
+    with open(f'{os.path.join(path, filename)}.pkl', 'wb') as f:
+        pickle.dump(obj, f)
 

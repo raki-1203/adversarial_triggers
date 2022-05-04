@@ -2,17 +2,18 @@ import os
 import sys
 import argparse
 
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-
 import torch
-from sklearn.model_selection import train_test_split
 
+from tqdm import tqdm
+from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 from transformers import (
     AutoConfig,
     AutoTokenizer,
     AutoModelForSequenceClassification,
 )
+
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from nsmc import attacks
 from nsmc.utils import (
@@ -24,7 +25,7 @@ from nsmc.utils import (
     get_embedding_weight,
     get_accuracy,
     get_average_grad,
-    get_best_candidates,
+    get_best_candidates, save_pickle_file,
 )
 
 
@@ -65,11 +66,12 @@ def main(args):
     train_dataset = load_data(dataset_dir=os.path.join(data_path, 'ratings_train.txt'))
 
     # train / valid set split
-    train_df, valid_df = train_test_split(train_dataset, test_size=0.2, shuffle=True, stratify=train_dataset['label'])
+    train_df, valid_df = train_test_split(train_dataset, test_size=0.2, shuffle=True, stratify=train_dataset['label'],
+                                          random_state=args.seed)
 
     # filter the dataset to only positive or negative examples
     # (the trigger will cause the opposite prediction)
-    dataset_label_filter = 0
+    dataset_label_filter = args.dataset_label_filter
     targeted_valid_df = valid_df[valid_df['label'] == dataset_label_filter]
 
     # valid label setting
@@ -82,37 +84,40 @@ def main(args):
     targeted_valid_dataset = SentimentClassificationDataset(tokenized_targeted_valid, targeted_valid_label)
 
     # get accuracy before adding triggers
-    # get_accuracy(args, device, model, targeted_valid_dataset, index_to_word_dict, trigger_token_ids=None)
+    get_accuracy(args, device, model, targeted_valid_dataset, index_to_word_dict, trigger_token_ids=None)
     model.train()
 
     # initialize triggers which are concatenated to the input
     trigger_token_ids = [word_to_index_dict.get("the")] * args.num_trigger_tokens
 
     # sample batches, update the triggers, and repeat
-    for epoch in range(args.epoch):
-        print(f'{epoch + 1} Epoch')
-        for batch in DataLoader(targeted_valid_dataset, batch_size=args.universal_perturb_batch_size, shuffle=True):
-            # get accuracy with current triggers
-            get_accuracy(args, device, model, targeted_valid_dataset, index_to_word_dict, trigger_token_ids)
-            model.train()
+    trigger_accuracy_dict = {}
+    for batch in tqdm(DataLoader(targeted_valid_dataset, batch_size=args.universal_perturb_batch_size, shuffle=True)):
+        # get accuracy with current triggers
+        accuracy, trigger = get_accuracy(args, device, model, targeted_valid_dataset, index_to_word_dict,
+                                         trigger_token_ids)
+        trigger_accuracy_dict[trigger] = accuracy
+        model.train()
 
-            # get gradient w.r.t. trigger embeddings for current batch
-            averaged_grad = get_average_grad(args, device, model, batch, trigger_token_ids)
+        # get gradient w.r.t. trigger embeddings for current batch
+        averaged_grad = get_average_grad(args, device, model, batch, trigger_token_ids)
 
-            # pass the gradients to a particular attack to generate token candidates for each token.
-            cand_trigger_token_ids = attacks.hotflip_attack(averaged_grad,
-                                                            embedding_weight,
-                                                            trigger_token_ids,
-                                                            num_candidates=args.num_candidates,
-                                                            increase_loss=True,
-                                                            )
+        # pass the gradients to a particular attack to generate token candidates for each token.
+        cand_trigger_token_ids = attacks.hotflip_attack(averaged_grad,
+                                                        embedding_weight,
+                                                        trigger_token_ids,
+                                                        num_candidates=args.num_candidates,
+                                                        increase_loss=True,
+                                                        )
 
-            # Tries all of the candidates and returns the trigger sequence with highest loss.
-            trigger_token_ids = get_best_candidates(args, device, model, batch, trigger_token_ids,
-                                                    cand_trigger_token_ids)
+        # Tries all of the candidates and returns the trigger sequence with highest loss.
+        trigger_token_ids = get_best_candidates(args, device, model, batch, trigger_token_ids, cand_trigger_token_ids)
 
     # print accuracy after adding triggers
-    get_accuracy(args, device, model, targeted_valid_dataset, index_to_word_dict, trigger_token_ids)
+    accuracy, trigger = get_accuracy(args, device, model, targeted_valid_dataset, index_to_word_dict, trigger_token_ids)
+    trigger_accuracy_dict[trigger] = accuracy
+
+    save_pickle_file(path=data_path, filename='trigger_accuracy_dict', obj=trigger_accuracy_dict)
 
 
 if __name__ == '__main__':
@@ -124,18 +129,18 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--seed', type=int, default=42, help='random seed (default: 42)')
-    parser.add_argument('--epoch', type=int, default=5, help='epoch (default: 5)')
     parser.add_argument('--num_candidates', type=int, default=40, help='number of candidate (default: 40)')
     parser.add_argument('--num_trigger_tokens', type=int, default=3, help='number of trigger token  (default: 3)')
     parser.add_argument('--model_name_or_path', type=str, default='klue/roberta-base',
                         help='model_name_or_path used for training')
     parser.add_argument('--run_name', type=str, required=True,
                         help='run_name used for training')
-    parser.add_argument('--universal_perturb_batch_size', type=int, default=32,
-                        help='batch size per device during evaluation (default: 32)')
+    parser.add_argument('--universal_perturb_batch_size', type=int, default=80,
+                        help='batch size per device during evaluation (default: 80)')
     parser.add_argument('--prediction_dir', type=str, default=prediction_path,
                         help='predict result folder')
     parser.add_argument('--num_labels', type=int, default=2, help='number of labels (default: 2)')
+    parser.add_argument('--dataset_label_filter', type=int, default=1, help='label filter (negative: 0 positive: 1)')
 
     args = parser.parse_args()
 
