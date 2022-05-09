@@ -25,7 +25,9 @@ from nsmc.utils import (
     get_embedding_weight,
     get_accuracy,
     get_average_grad,
-    get_best_candidates, save_pickle_file,
+    get_best_candidates,
+    save_pickle_file,
+    get_sentiment_token_index_set,
 )
 
 
@@ -73,6 +75,11 @@ def main(args):
     # (the trigger will cause the opposite prediction)
     dataset_label_filter = args.dataset_label_filter
     targeted_valid_df = valid_df[valid_df['label'] == dataset_label_filter]
+    print('postive to negative' if args.dataset_label_filter == 1 else 'negative to positive',
+          f'targeted_valid_df 개수 : {len(targeted_valid_df)}')
+
+    # get sentiment token set (args.dataset_label_filter == 0 이면 긍정 감성 단어 1이면 부정 감성 단어)
+    sentiment_token_index_set = get_sentiment_token_index_set(args, data_path, tokenizer)
 
     # valid label setting
     targeted_valid_label = targeted_valid_df['label'].tolist()
@@ -92,32 +99,47 @@ def main(args):
 
     # sample batches, update the triggers, and repeat
     trigger_accuracy_dict = {}
-    for batch in tqdm(DataLoader(targeted_valid_dataset, batch_size=args.universal_perturb_batch_size, shuffle=True)):
-        # get accuracy with current triggers
-        accuracy, trigger = get_accuracy(args, device, model, targeted_valid_dataset, index_to_word_dict,
-                                         trigger_token_ids)
-        trigger_accuracy_dict[trigger] = accuracy
-        model.train()
+    for epoch in range(args.epoch):
+        print('*' * 50)
+        print(f'{epoch + 1} / {args.epoch} Epochs')
+        print('*' * 50)
+        for batch in tqdm(DataLoader(targeted_valid_dataset, batch_size=args.universal_perturb_batch_size,
+                                     shuffle=True)):
+            # get accuracy with current triggers
+            accuracy, trigger = get_accuracy(args, device, model, targeted_valid_dataset, index_to_word_dict,
+                                             trigger_token_ids)
+            trigger_accuracy_dict[trigger] = accuracy
+            model.train()
 
-        # get gradient w.r.t. trigger embeddings for current batch
-        averaged_grad = get_average_grad(args, device, model, batch, trigger_token_ids)
+            # get gradient w.r.t. trigger embeddings for current batch
+            averaged_grad = get_average_grad(args, device, model, batch, trigger_token_ids)
 
-        # pass the gradients to a particular attack to generate token candidates for each token.
-        cand_trigger_token_ids = attacks.hotflip_attack(averaged_grad,
-                                                        embedding_weight,
-                                                        trigger_token_ids,
-                                                        num_candidates=args.num_candidates,
-                                                        increase_loss=True,
-                                                        )
+            # pass the gradients to a particular attack to generate token candidates for each token.
+            # cand_trigger_token_ids = attacks.hotflip_attack(averaged_grad,
+            #                                                 embedding_weight,
+            #                                                 trigger_token_ids,
+            #                                                 num_candidates=args.num_candidates,
+            #                                                 increase_loss=True,
+            #                                                 )
+            cand_trigger_token_ids = attacks.hotflip_attack_without_sentiment_token(
+                averaged_grad,
+                embedding_weight,
+                trigger_token_ids,
+                sentiment_token_index_set,
+                num_candidates=args.num_candidates,
+                increase_loss=True,
+            )
 
-        # Tries all of the candidates and returns the trigger sequence with highest loss.
-        trigger_token_ids = get_best_candidates(args, device, model, batch, trigger_token_ids, cand_trigger_token_ids)
+            # Tries all of the candidates and returns the trigger sequence with highest loss.
+            trigger_token_ids = get_best_candidates(args, device, model, batch, trigger_token_ids,
+                                                    cand_trigger_token_ids)
 
     # print accuracy after adding triggers
     accuracy, trigger = get_accuracy(args, device, model, targeted_valid_dataset, index_to_word_dict, trigger_token_ids)
     trigger_accuracy_dict[trigger] = accuracy
 
-    save_pickle_file(path=data_path, filename='trigger_accuracy_dict', obj=trigger_accuracy_dict)
+    filename = 'trigger_accuracy_4word_{}_dict'.format('n2p' if args.dataset_label_filter == 0 else 'p2n')
+    save_pickle_file(path=data_path, filename=filename, obj=trigger_accuracy_dict)
 
 
 if __name__ == '__main__':
@@ -129,6 +151,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--seed', type=int, default=42, help='random seed (default: 42)')
+    parser.add_argument('--epoch', type=int, default=3, help='epoch (default: 3)')
     parser.add_argument('--num_candidates', type=int, default=40, help='number of candidate (default: 40)')
     parser.add_argument('--num_trigger_tokens', type=int, default=3, help='number of trigger token  (default: 3)')
     parser.add_argument('--model_name_or_path', type=str, default='klue/roberta-base',
@@ -137,8 +160,6 @@ if __name__ == '__main__':
                         help='run_name used for training')
     parser.add_argument('--universal_perturb_batch_size', type=int, default=80,
                         help='batch size per device during evaluation (default: 80)')
-    parser.add_argument('--prediction_dir', type=str, default=prediction_path,
-                        help='predict result folder')
     parser.add_argument('--num_labels', type=int, default=2, help='number of labels (default: 2)')
     parser.add_argument('--dataset_label_filter', type=int, default=1, help='label filter (negative: 0 positive: 1)')
 

@@ -58,7 +58,7 @@ def get_average_grad(args, device, model, batch, trigger_token_ids, target_label
     original_labels = batch['labels'].clone()
     if target_label is not None:
         # set the labels equal to the target (backprop from the target class, not model prediction)
-        batch['labels'] = int(target_label) * torch.ones_like(batch['labels']).cuda()
+        batch['labels'] = int(target_label) * torch.ones_like(batch['labels']).to(device)
     global extracted_grads
     extracted_grads = []  # clear existing stored grads
     _, loss = evaluate_batch(args, device, model, batch, trigger_token_ids, is_backward=True)
@@ -179,7 +179,7 @@ def evaluate_batch(args, device, model, batch, trigger_token_ids=None, is_backwa
         return result
     else:
         trigger_sequence_tensor = torch.LongTensor(deepcopy(trigger_token_ids))
-        trigger_sequence_tensor = trigger_sequence_tensor.repeat(len(data['input_ids']), 1).cuda()
+        trigger_sequence_tensor = trigger_sequence_tensor.repeat(len(data['input_ids']), 1).to(device)
         original_input_ids = data['input_ids'].clone()
         original_attention_mask = data['attention_mask'].clone()
         trigger_attention_mask = torch.ones_like(trigger_sequence_tensor)
@@ -304,3 +304,25 @@ def save_pickle_file(path, filename, obj):
     with open(f'{os.path.join(path, filename)}.pkl', 'wb') as f:
         pickle.dump(obj, f)
 
+
+def get_sentiment_token_index_set(args, data_path, tokenizer):
+    if args.dataset_label_filter == 0:
+        positive_keyword_df = pd.read_table(os.path.join(data_path, 'pos_pol_word.txt'),
+                                            skiprows=17, header=0, names=['keyword'])
+
+        positive_keyword_df['token'] = positive_keyword_df['keyword'].apply(lambda x: tokenizer.encode(x)[1:-1])
+        positive_keyword_df['token_len'] = positive_keyword_df['token'].apply(lambda x: len(x))
+        positive_token_index = positive_keyword_df[positive_keyword_df['token_len'] == 1]['token'].apply(
+            lambda x: x[0]).values
+        positive_token_index_set = set(positive_token_index)
+        return positive_token_index_set
+    else:
+        negative_keyword_df = pd.read_table(os.path.join(data_path, 'neg_pol_word.txt'),
+                                            skiprows=17, header=0, names=['keyword'])
+
+        negative_keyword_df['token'] = negative_keyword_df['keyword'].apply(lambda x: tokenizer.encode(x)[1:-1])
+        negative_keyword_df['token_len'] = negative_keyword_df['token'].apply(lambda x: len(x))
+        negative_token_index = negative_keyword_df[negative_keyword_df['token_len'] == 1]['token'].apply(
+            lambda x: x[0]).values
+        negative_token_index_set = set(negative_token_index)
+        return negative_token_index_set

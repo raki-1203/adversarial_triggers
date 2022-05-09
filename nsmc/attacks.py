@@ -77,7 +77,7 @@ def hotflip_attack_modified(averaged_grad, embedding_matrix, trigger_token_ids,
 
 
 def hotflip_attack_without_sentiment_token(averaged_grad, embedding_matrix, trigger_token_ids,
-                                           increase_loss=False, num_candidates=1):
+                                           sentiment_token_index_set, increase_loss=False, num_candidates=1):
     """
     The "Hotflip" attack described in Equation (2) of the paper. This code is heavily inspired by
     the nice code of Paul Michel here https://github.com/pmichel31415/translate/blob/paul/
@@ -93,21 +93,21 @@ def hotflip_attack_without_sentiment_token(averaged_grad, embedding_matrix, trig
     """
     averaged_grad = averaged_grad.cpu()
     embedding_matrix = embedding_matrix.cpu()
-    trigger_token_embeds = F.embedding(torch.LongTensor(trigger_token_ids),
-                                       embedding_matrix).detach().unsqueeze(0)
-    embedding_matrix = embedding_matrix.unsqueeze(0)
-    embedding_matrix = torch.cat([embedding_matrix, embedding_matrix, embedding_matrix], dim=0)
-    trigger_token_embeds = torch.transpose(trigger_token_embeds, 0, 1)
-
+    trigger_token_embeds = torch.nn.functional.embedding(torch.LongTensor(trigger_token_ids),
+                                                         embedding_matrix).detach().unsqueeze(0)
     averaged_grad = averaged_grad.unsqueeze(0)
-    averaged_grad = torch.transpose(averaged_grad, 0, 1)
-    gradient_dot_embedding_matrix = torch.einsum("bij,bkj->bik",
-                                                 (averaged_grad, embedding_matrix - trigger_token_embeds))
-    gradient_dot_embedding_matrix = torch.transpose(gradient_dot_embedding_matrix, 0, 1)
+    gradient_dot_embedding_matrix = torch.einsum("bij,kj->bik",
+                                                 (averaged_grad, embedding_matrix))
     if not increase_loss:
         gradient_dot_embedding_matrix *= -1  # lower versus increase the class probability.
     if num_candidates > 1:  # get top k options
-        _, best_k_ids = torch.topk(gradient_dot_embedding_matrix, num_candidates, dim=2)
+        _, best_k_ids = torch.topk(gradient_dot_embedding_matrix, 100, dim=2)
+        result = []
+        for i in range(len(trigger_token_ids)):
+            temp = torch.tensor([idx for idx in best_k_ids[0, i, :] if int(idx) not in sentiment_token_index_set]).unsqueeze(0)
+            result.append(temp[:, :num_candidates])
+        best_k_ids = torch.cat(result, dim=0)
+        best_k_ids = best_k_ids.unsqueeze(0)
         return best_k_ids.detach().cpu().numpy()[0]
     _, best_at_each_step = gradient_dot_embedding_matrix.max(2)
     return best_at_each_step[0].detach().cpu().numpy()
