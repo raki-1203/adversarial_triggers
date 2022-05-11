@@ -18,6 +18,7 @@ from copy import deepcopy
 from operator import itemgetter
 from torch.utils.data import Dataset, DataLoader
 from sklearn.metrics import f1_score, accuracy_score
+from sentence_transformers import util
 
 
 # returns the wordpiece embedding weight matrix
@@ -73,7 +74,8 @@ def get_average_grad(args, device, model, batch, trigger_token_ids, target_label
     return averaged_grad
 
 
-def get_best_candidates(args, device, model, batch, trigger_token_ids, cand_trigger_token_ids, beam_size=1):
+def get_best_candidates(args, device, model, batch, trigger_token_ids, cand_trigger_token_ids, tokenizer,
+                        sentiment_keyword_embeddings, st_model, beam_size=1):
     """"
     Given the list of candidate trigger token ids (of number of trigger words by number of candidates
     per word), it finds the best new candidate trigger.
@@ -82,7 +84,8 @@ def get_best_candidates(args, device, model, batch, trigger_token_ids, cand_trig
     # first round, no beams, just get the loss for each of the candidates in index 0.
     # (indices 1-end are just the old trigger)
     loss_per_candidate = get_loss_per_candidate(args, device, 0, model, batch, trigger_token_ids,
-                                                cand_trigger_token_ids)
+                                                cand_trigger_token_ids, tokenizer, sentiment_keyword_embeddings,
+                                                st_model)
     # maximize the loss
     top_candidates = heapq.nlargest(beam_size, loss_per_candidate, key=itemgetter(1))
 
@@ -91,12 +94,14 @@ def get_best_candidates(args, device, model, batch, trigger_token_ids, cand_trig
         loss_per_candidate = []
         for cand, _ in top_candidates:  # for all the beams, try all the candidates at idx
             loss_per_candidate.extend(get_loss_per_candidate(args, device, idx, model, batch, cand,
-                                                             cand_trigger_token_ids))
+                                                             cand_trigger_token_ids, tokenizer,
+                                                             sentiment_keyword_embeddings, st_model))
         top_candidates = heapq.nlargest(beam_size, loss_per_candidate, key=itemgetter(1))
     return max(top_candidates, key=itemgetter(1))[0]
 
 
-def get_loss_per_candidate(args, device, index, model, batch, trigger_token_ids, cand_trigger_token_ids):
+def get_loss_per_candidate(args, device, index, model, batch, trigger_token_ids, cand_trigger_token_ids,
+                           tokenizer, sentiment_keyword_embeddings, st_model):
     """
     For a particular index, the function tries all of the candidate tokens for that index.
     The function returns a list containing the candidate triggers it tried, along with their loss.
@@ -111,6 +116,18 @@ def get_loss_per_candidate(args, device, index, model, batch, trigger_token_ids,
     for cand_id in range(len(cand_trigger_token_ids[0])):
         trigger_token_ids_one_replaced = deepcopy(trigger_token_ids)  # copy trigger
         trigger_token_ids_one_replaced[index] = cand_trigger_token_ids[index][cand_id]  # replace one token
+
+        trigger_query = tokenizer.decode(trigger_token_ids_one_replaced)
+        trigger_query_embedding = st_model.encode(trigger_query)
+
+        # 트리거 - 감성 사전 후보군 간 코사인 유사도 계산 후,
+        cos_scores = util.pytorch_cos_sim(trigger_query_embedding, sentiment_keyword_embeddings)[0]
+
+        # 코사인 유사도 순으로 1개 문장 추출
+        top_results = float(torch.max(cos_scores))
+        if top_results >= 0.5:
+            continue
+
         _, loss = evaluate_batch(args, device, model, batch, trigger_token_ids_one_replaced)
         loss_per_candidate.append((deepcopy(trigger_token_ids_one_replaced), loss))
     return loss_per_candidate
@@ -326,3 +343,20 @@ def get_sentiment_token_index_set(args, data_path, tokenizer):
             lambda x: x[0]).values
         negative_token_index_set = set(negative_token_index)
         return negative_token_index_set
+
+
+def get_sentiment_keyword_embeddings(args, data_path, st_model):
+    if args.dataset_label_filter == 0:
+        positive_keyword_df = pd.read_table(os.path.join(data_path, 'pos_pol_word.txt'),
+                                            skiprows=17, header=0, names=['keyword'])
+
+        keyword_list = positive_keyword_df['keyword'].values.tolist()
+        positive_keyword_embeddings = st_model.encode(keyword_list)
+        return positive_keyword_embeddings
+    else:
+        negative_keyword_df = pd.read_table(os.path.join(data_path, 'neg_pol_word.txt'),
+                                            skiprows=17, header=0, names=['keyword'])
+
+        keyword_list = negative_keyword_df['keyword'].values.tolist()
+        negative_keyword_embeddings = st_model.encode(keyword_list)
+        return negative_keyword_embeddings

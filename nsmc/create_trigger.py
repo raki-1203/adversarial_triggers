@@ -12,6 +12,7 @@ from transformers import (
     AutoTokenizer,
     AutoModelForSequenceClassification,
 )
+from sentence_transformers import SentenceTransformer
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
@@ -28,6 +29,7 @@ from nsmc.utils import (
     get_best_candidates,
     save_pickle_file,
     get_sentiment_token_index_set,
+    get_sentiment_keyword_embeddings,
 )
 
 
@@ -78,8 +80,11 @@ def main(args):
     print('postive to negative' if args.dataset_label_filter == 1 else 'negative to positive',
           f'targeted_valid_df 개수 : {len(targeted_valid_df)}')
 
+    # load SentenceTransformers model
+    st_model = SentenceTransformer('Huffon/sentence-klue-roberta-base')
+
     # get sentiment token set (args.dataset_label_filter == 0 이면 긍정 감성 단어 1이면 부정 감성 단어)
-    sentiment_token_index_set = get_sentiment_token_index_set(args, data_path, tokenizer)
+    sentiment_keyword_embeddings = get_sentiment_keyword_embeddings(args, data_path, st_model)
 
     # valid label setting
     targeted_valid_label = targeted_valid_df['label'].tolist()
@@ -121,24 +126,31 @@ def main(args):
             #                                                 num_candidates=args.num_candidates,
             #                                                 increase_loss=True,
             #                                                 )
-            cand_trigger_token_ids = attacks.hotflip_attack_without_sentiment_token(
-                averaged_grad,
-                embedding_weight,
-                trigger_token_ids,
-                sentiment_token_index_set,
-                num_candidates=args.num_candidates,
-                increase_loss=True,
-            )
+            cand_trigger_token_ids = attacks.hotflip_attack_modified(averaged_grad,
+                                                                     embedding_weight,
+                                                                     trigger_token_ids,
+                                                                     num_candidates=args.num_candidates,
+                                                                     increase_loss=True,
+                                                                     )
+            # cand_trigger_token_ids = attacks.hotflip_attack_without_sentiment_token(
+            #     averaged_grad,
+            #     embedding_weight,
+            #     trigger_token_ids,
+            #     sentiment_token_index_set,
+            #     num_candidates=args.num_candidates,
+            #     increase_loss=True,
+            # )
 
             # Tries all of the candidates and returns the trigger sequence with highest loss.
             trigger_token_ids = get_best_candidates(args, device, model, batch, trigger_token_ids,
-                                                    cand_trigger_token_ids)
+                                                    cand_trigger_token_ids, tokenizer, sentiment_keyword_embeddings,
+                                                    st_model)
 
     # print accuracy after adding triggers
     accuracy, trigger = get_accuracy(args, device, model, targeted_valid_dataset, index_to_word_dict, trigger_token_ids)
     trigger_accuracy_dict[trigger] = accuracy
 
-    filename = 'trigger_accuracy_4word_{}_dict'.format('n2p' if args.dataset_label_filter == 0 else 'p2n')
+    filename = 'trigger_accuracy_modified_SBERT_{}_dict'.format('n2p' if args.dataset_label_filter == 0 else 'p2n')
     save_pickle_file(path=data_path, filename=filename, obj=trigger_accuracy_dict)
 
 
@@ -158,7 +170,7 @@ if __name__ == '__main__':
                         help='model_name_or_path used for training')
     parser.add_argument('--run_name', type=str, required=True,
                         help='run_name used for training')
-    parser.add_argument('--universal_perturb_batch_size', type=int, default=80,
+    parser.add_argument('--universal_perturb_batch_size', type=int, default=40,
                         help='batch size per device during evaluation (default: 80)')
     parser.add_argument('--num_labels', type=int, default=2, help='number of labels (default: 2)')
     parser.add_argument('--dataset_label_filter', type=int, default=1, help='label filter (negative: 0 positive: 1)')
