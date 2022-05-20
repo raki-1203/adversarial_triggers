@@ -3,7 +3,7 @@ import sys
 import os
 
 import torch
-import wandb as wandb
+import wandb
 
 from sklearn.model_selection import train_test_split
 from transformers import (

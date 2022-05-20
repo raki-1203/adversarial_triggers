@@ -77,7 +77,8 @@ def hotflip_attack_modified(averaged_grad, embedding_matrix, trigger_token_ids,
 
 
 def hotflip_attack_without_sentiment_token(averaged_grad, embedding_matrix, trigger_token_ids,
-                                           sentiment_token_index_set, increase_loss=False, num_candidates=1):
+                                           sentiment_token_index_set, remove_token_index_set, increase_loss=False,
+                                           num_candidates=1):
     """
     The "Hotflip" attack described in Equation (2) of the paper. This code is heavily inspired by
     the nice code of Paul Michel here https://github.com/pmichel31415/translate/blob/paul/
@@ -101,10 +102,11 @@ def hotflip_attack_without_sentiment_token(averaged_grad, embedding_matrix, trig
     if not increase_loss:
         gradient_dot_embedding_matrix *= -1  # lower versus increase the class probability.
     if num_candidates > 1:  # get top k options
-        _, best_k_ids = torch.topk(gradient_dot_embedding_matrix, 100, dim=2)
+        _, best_k_ids = torch.topk(gradient_dot_embedding_matrix, 1000, dim=2)
         result = []
         for i in range(len(trigger_token_ids)):
-            temp = torch.tensor([idx for idx in best_k_ids[0, i, :] if int(idx) not in sentiment_token_index_set]).unsqueeze(0)
+            temp = torch.tensor([idx for idx in best_k_ids[0, i, :]
+                                 if int(idx) not in sentiment_token_index_set | remove_token_index_set]).unsqueeze(0)
             result.append(temp[:, :num_candidates])
         best_k_ids = torch.cat(result, dim=0)
         best_k_ids = best_k_ids.unsqueeze(0)

@@ -2,6 +2,7 @@ import os
 import sys
 import argparse
 
+import wandb
 import torch
 
 from tqdm import tqdm
@@ -37,6 +38,18 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "1"  # Set the GPU 0 to use
 
 
 def main(args):
+    # wandb setting
+    wandb_config = {
+        'approach': 'hot-flip',
+        'dataset_label': args.dataset_label_filter,
+    }
+
+    wandb.init(project=args.project_name,
+               name=f'{"positive to negative" if args.dataset_label_filter else "negative to positive"}-trigger-{args.num_trigger_tokens}',
+               config=wandb_config,
+               reinit=True,
+               )
+
     # seed 고정
     seed_everything(args.seed)
 
@@ -79,7 +92,7 @@ def main(args):
           f'targeted_valid_df 개수 : {len(targeted_valid_df)}')
 
     # get sentiment token set (args.dataset_label_filter == 0 이면 긍정 감성 단어 1이면 부정 감성 단어)
-    sentiment_token_index_set = get_sentiment_token_index_set(args, data_path, tokenizer)
+    sentiment_token_index_set, remove_token_index_set = get_sentiment_token_index_set(args, data_path)
 
     # valid label setting
     targeted_valid_label = targeted_valid_df['label'].tolist()
@@ -99,6 +112,7 @@ def main(args):
 
     # sample batches, update the triggers, and repeat
     trigger_accuracy_dict = {}
+    wandb_table = wandb.Table(columns=['trigger', 'attack_success_rate'])
     for epoch in range(args.epoch):
         print('*' * 50)
         print(f'{epoch + 1} / {args.epoch} Epochs')
@@ -109,6 +123,8 @@ def main(args):
             accuracy, trigger = get_accuracy(args, device, model, targeted_valid_dataset, index_to_word_dict,
                                              trigger_token_ids)
             trigger_accuracy_dict[trigger] = accuracy
+            wandb_table.add_data(trigger, round(1 - accuracy, 4))
+            wandb.log({'trigger_attack_success_rate': wandb_table})
             model.train()
 
             # get gradient w.r.t. trigger embeddings for current batch
@@ -126,6 +142,7 @@ def main(args):
                 embedding_weight,
                 trigger_token_ids,
                 sentiment_token_index_set,
+                remove_token_index_set,
                 num_candidates=args.num_candidates,
                 increase_loss=True,
             )
@@ -137,6 +154,8 @@ def main(args):
     # print accuracy after adding triggers
     accuracy, trigger = get_accuracy(args, device, model, targeted_valid_dataset, index_to_word_dict, trigger_token_ids)
     trigger_accuracy_dict[trigger] = accuracy
+    wandb_table.add_data(trigger, round(1 - accuracy, 4))
+    wandb.log({'trigger_attack_success_rate': wandb_table})
 
     filename = 'trigger_accuracy_4word_{}_dict'.format('n2p' if args.dataset_label_filter == 0 else 'p2n')
     save_pickle_file(path=data_path, filename=filename, obj=trigger_accuracy_dict)
@@ -162,6 +181,7 @@ if __name__ == '__main__':
                         help='batch size per device during evaluation (default: 80)')
     parser.add_argument('--num_labels', type=int, default=2, help='number of labels (default: 2)')
     parser.add_argument('--dataset_label_filter', type=int, default=1, help='label filter (negative: 0 positive: 1)')
+    parser.add_argument('--project_name', type=str, default='tmax ojt', help='wandb project name (default: tmax_ojt)')
 
     args = parser.parse_args()
 
