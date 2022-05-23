@@ -124,7 +124,6 @@ def main(args):
                                              trigger_token_ids)
             trigger_accuracy_dict[trigger] = accuracy
             wandb_table.add_data(trigger, round(1 - accuracy, 4))
-            wandb.log({'trigger_attack_success_rate': wandb_table})
             model.train()
 
             # get gradient w.r.t. trigger embeddings for current batch
@@ -155,10 +154,12 @@ def main(args):
     accuracy, trigger = get_accuracy(args, device, model, targeted_valid_dataset, index_to_word_dict, trigger_token_ids)
     trigger_accuracy_dict[trigger] = accuracy
     wandb_table.add_data(trigger, round(1 - accuracy, 4))
-    wandb.log({'trigger_attack_success_rate': wandb_table})
+    wandb.log({f'{"positive to negative" if args.dataset_label_filter else "negative to positive"}'
+               f'-trigger-{args.num_trigger_tokens}-trigger_attack_success_rate': wandb_table})
 
-    filename = 'trigger_accuracy_4word_{}_dict'.format('n2p' if args.dataset_label_filter == 0 else 'p2n')
-    save_pickle_file(path=data_path, filename=filename, obj=trigger_accuracy_dict)
+    filename = 'trigger_accuracy_{}word_{}_dict'.format(args.num_trigger_tokens,
+                                                        'n2p' if args.dataset_label_filter == 0 else 'p2n')
+    save_pickle_file(path=os.path.join(data_path, 'trigger_dict'), filename=filename, obj=trigger_accuracy_dict)
 
 
 if __name__ == '__main__':
@@ -181,7 +182,8 @@ if __name__ == '__main__':
                         help='batch size per device during evaluation (default: 80)')
     parser.add_argument('--num_labels', type=int, default=2, help='number of labels (default: 2)')
     parser.add_argument('--dataset_label_filter', type=int, default=1, help='label filter (negative: 0 positive: 1)')
-    parser.add_argument('--project_name', type=str, default='tmax ojt', help='wandb project name (default: tmax_ojt)')
+    parser.add_argument('--project_name', type=str, default='tmax ojt create trigger',
+                        help='wandb project name (default: tmax_ojt)')
 
     args = parser.parse_args()
 
