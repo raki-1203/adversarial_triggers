@@ -27,7 +27,7 @@ from utils import (
 
 # gpu setting
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # Arrange GPU devices starting from 0
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Set the GPU 0 to use
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"  # Set the GPU 0 to use
 
 
 def inference(test_df, test_label, args):
