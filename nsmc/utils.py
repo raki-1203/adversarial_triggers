@@ -302,6 +302,8 @@ def load_pickle_file(path, filename):
 
 
 def save_pickle_file(path, filename, obj):
+    if not os.path.exists(path):
+        os.makedirs(path, exist_ok=True)
     with open(f'{os.path.join(path, filename)}.pkl', 'wb') as f:
         pickle.dump(obj, f)
 
