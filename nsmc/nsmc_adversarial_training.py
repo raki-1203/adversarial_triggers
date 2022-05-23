@@ -24,6 +24,7 @@ from utils import (
     SentimentClassificationDataset,
     increment_path,
     compute_metrics,
+    add_trigger,
 )
 
 
@@ -120,6 +121,8 @@ def main(args):
 
     train_df, valid_df = train_test_split(train_dataset, test_size=0.2, shuffle=True, stratify=train_dataset['label'],
                                           random_state=args.seed)
+
+    train_df = add_trigger(train_df)  # trigger 추가한 train data
 
     # train, valid label setting
     train_label = train_df['label'].values

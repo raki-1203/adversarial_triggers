@@ -232,6 +232,21 @@ def load_data(dataset_dir, is_train=True):
     return df
 
 
+def add_trigger(df):
+    """ 데이터에 trigger 추가 """
+    neg2pos_trigger = '펑펑 빠져서 여운 '
+    pos2neg_trigger = '알맹이 걸레 아닙니까 '
+
+    temp = df.copy()
+
+    temp['document'] = temp.apply(
+        lambda x: pos2neg_trigger + x['document'] if x['label'] == 1 else neg2pos_trigger + x['document'], axis=1)
+
+    df = pd.concat([df, temp])
+
+    return df
+
+
 def tokenized_dataset(dataset, tokenizer, args):
     tokenized_sentences = tokenizer(
         list(dataset['document']),
