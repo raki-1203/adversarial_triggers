@@ -112,7 +112,7 @@ def main(args):
 
     # sample batches, update the triggers, and repeat
     trigger_accuracy_dict = {}
-    wandb_table = wandb.Table(columns=['trigger', 'attack_success_rate'])
+    trigger_accuracy_data = []
     for epoch in range(args.epoch):
         print('*' * 50)
         print(f'{epoch + 1} / {args.epoch} Epochs')
@@ -123,7 +123,10 @@ def main(args):
             accuracy, trigger = get_accuracy(args, device, model, targeted_valid_dataset, index_to_word_dict,
                                              trigger_token_ids)
             trigger_accuracy_dict[trigger] = accuracy
-            wandb_table.add_data(trigger, round(1 - accuracy, 4))
+            trigger_accuracy_data.append([trigger, round((1 - accuracy) * 100, 4)])
+            wandb_table = wandb.Table(data=trigger_accuracy_data, columns=['trigger', 'attack_success_rate'])
+            wandb.log({f'train_data-{"positive to negative" if args.dataset_label_filter else "negative to positive"}'
+                       f'-trigger-{args.num_trigger_tokens}-trigger_attack_success_rate': wandb_table})
             model.train()
 
             # get gradient w.r.t. trigger embeddings for current batch
@@ -153,8 +156,8 @@ def main(args):
     # print accuracy after adding triggers
     accuracy, trigger = get_accuracy(args, device, model, targeted_valid_dataset, index_to_word_dict, trigger_token_ids)
     trigger_accuracy_dict[trigger] = accuracy
-    wandb_table.add_data(trigger, round(1 - accuracy, 4))
-    wandb.log({f'{"positive to negative" if args.dataset_label_filter else "negative to positive"}'
+    wandb_table = wandb.Table(data=trigger_accuracy_data, columns=['trigger', 'attack_success_rate'])
+    wandb.log({f'train_data-{"positive to negative" if args.dataset_label_filter else "negative to positive"}'
                f'-trigger-{args.num_trigger_tokens}-trigger_attack_success_rate': wandb_table})
 
     filename = 'trigger_accuracy_{}word_{}_dict'.format(args.num_trigger_tokens,
