@@ -165,8 +165,8 @@ if __name__ == '__main__':
                         help='Number of updates steps to accumulate the gradients for, '
                              'before performing a backward/update pass. (default: 4)')
     parser.add_argument('--train_batch_size', type=int, default=32,
-                        help='batch size per device during training (default: 35)')
-    parser.add_argument('--valid_batch_size', type=int, default=256, help='batch size for evaluation (default: 128)')
+                        help='batch size per device during training (default: 32)')
+    parser.add_argument('--valid_batch_size', type=int, default=256, help='batch size for evaluation (default: 256)')
     parser.add_argument('--model_name_or_path', type=str, default='klue/roberta-base',
                         help='what kinds of models (default: klue/roberta-large)')
     parser.add_argument('--run_name', type=str, default='exp', help='name of the W&B run (default: exp)')
