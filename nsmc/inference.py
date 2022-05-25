@@ -90,7 +90,7 @@ def main(args):
 
     output_pred, output_prob = inference(test_df, test_label, args)
 
-    accuracy = round(accuracy_score(test_label, output_pred), 2)
+    accuracy = round(accuracy_score(test_label, output_pred), 4)
 
     # prediction dataframe
     prediction = pd.DataFrame({'id': test_df['id'].tolist(), 'pred_label': output_pred, 'pred_prob': output_prob,
