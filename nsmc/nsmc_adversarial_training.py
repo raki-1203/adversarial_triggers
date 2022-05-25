@@ -5,6 +5,7 @@ import os
 import torch
 import wandb
 
+from datetime import datetime
 from sklearn.model_selection import train_test_split
 from transformers import (
     AutoModelForSequenceClassification,
@@ -103,7 +104,7 @@ def train(train_df, valid_df, train_label, valid_label, args):
 
     # train model
     trainer.train()
-    save_dir = increment_path(os.path.join('./best_model', args.run_name))
+    save_dir = increment_path(os.path.join('./best_model', f'{args.run_name}-{args.rate}-{args.num_trigger}'))
     model.save_pretrained(save_dir)
 
     # 마지막 최종 best model 로 평가한 결과 저장해서 return
@@ -113,6 +114,9 @@ def train(train_df, valid_df, train_label, valid_label, args):
 
 
 def main(args):
+    # 함수 run 시간
+    now_time = datetime.today().strftime('%Y%m%d-%H%M%S')
+
     # seed 고정
     seed_everything(args.seed)
 
@@ -122,7 +126,7 @@ def main(args):
     train_df, valid_df = train_test_split(train_dataset, test_size=0.2, shuffle=True, stratify=train_dataset['label'],
                                           random_state=args.seed)
 
-    train_df = add_trigger(train_df)  # trigger 추가한 train data
+    train_df = add_trigger(train_df, args.rate, args.num_trigger, data_path)  # trigger 추가한 train data
 
     # train, valid label setting
     train_label = train_df['label'].values
@@ -135,10 +139,13 @@ def main(args):
         'train_batch_size': args.train_batch_size,
         'valid_batch_size': args.valid_batch_size,
         'learning_rate': args.learning_rate,
+        'adv_example_rate': args.rate,
+        'num_trigger': args.num_trigger,
+        'trigger_type': args.trigger_type,
     }
 
     wandb.init(project=args.project_name,
-               name=f'{args.run_name}',
+               name=f'{args.run_name}-{args.rate}-{args.num_trigger}-{now_time}',
                config=wandb_config,
                reinit=True,
                )
@@ -168,8 +175,12 @@ if __name__ == '__main__':
                         help='Number of updates steps to accumulate the gradients for, '
                              'before performing a backward/update pass. (default: 4)')
     parser.add_argument('--train_batch_size', type=int, default=32,
-                        help='batch size per device during training (default: 35)')
-    parser.add_argument('--valid_batch_size', type=int, default=256, help='batch size for evaluation (default: 128)')
+                        help='batch size per device during training (default: 32)')
+    parser.add_argument('--valid_batch_size', type=int, default=256, help='batch size for evaluation (default: 256)')
+    parser.add_argument('--rate', type=float, default=1, help='trigger adding data rate (default: 1)')
+    parser.add_argument('--num_trigger', type=int, default=1, help='number of random choice trigger (default: 1)')
+    parser.add_argument('--trigger_type', type=str, default='train_data',
+                        help='when create trigger, using data (default: train_data)')
     parser.add_argument('--model_name_or_path', type=str, default='klue/roberta-base',
                         help='what kinds of models (default: klue/roberta-large)')
     parser.add_argument('--run_name', type=str, default='exp', help='name of the W&B run (default: exp)')
@@ -201,7 +212,7 @@ if __name__ == '__main__':
                         help='number of early_stopping_patience (default: 5)')
 
     args = parser.parse_args()
-    args.run_name = args.model_name_or_path.split('/')[-1] + '/' + args.run_name
+    args.run_name = args.model_name_or_path.split('/')[-1] + '/' + args.trigger_type + '-' + args.run_name
     print(args)
 
     main(args)
