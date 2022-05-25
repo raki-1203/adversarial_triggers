@@ -232,15 +232,21 @@ def load_data(dataset_dir, is_train=True):
     return df
 
 
-def add_trigger(df):
+def add_trigger(df, rate, num_trigger, data_path):
     """ 데이터에 trigger 추가 """
-    neg2pos_trigger = '펑펑 빠져서 여운 '
-    pos2neg_trigger = '알맹이 걸레 아닙니까 '
+    p2n_dict = load_pickle_file(os.path.join(data_path, 'trigger_dict'), 'train_data-trigger_accuracy_3word_p2n_dict')
+    n2p_dict = load_pickle_file(os.path.join(data_path, 'trigger_dict'), 'train_data-trigger_accuracy_3word_n2p_dict')
+    p2n_trigger_list = sorted(p2n_dict.items(), key=lambda x: x[1])
+    n2p_trigger_list = sorted(n2p_dict.items(), key=lambda x: x[1])
+    pos2neg_trigger = [' '.join(trigger.split(',')) for trigger, _ in p2n_trigger_list][:num_trigger]
+    neg2pos_trigger = [' '.join(trigger.split(',')) for trigger, _ in n2p_trigger_list][:num_trigger]
 
-    temp = df.copy()
+    num_row = int(len(df) * rate)
+    temp = df.sample(num_row).copy()
 
     temp['document'] = temp.apply(
-        lambda x: pos2neg_trigger + x['document'] if x['label'] == 1 else neg2pos_trigger + x['document'], axis=1)
+        lambda x: np.random.choice(pos2neg_trigger) + ' ' + x['document']
+        if x['label'] == 1 else np.random.choice(neg2pos_trigger) + ' ' + x['document'], axis=1)
 
     df = pd.concat([df, temp])
 
