@@ -99,7 +99,7 @@ def train(train_df, valid_df, train_label, valid_label, args):
         eval_dataset=valid_dataset if training_args.do_eval else None,
         data_collator=default_data_collator,
         compute_metrics=compute_metrics,
-        callbacks=[EarlyStoppingCallback(early_stopping_patience=args.early_stopping_patience)],
+        # callbacks=[EarlyStoppingCallback(early_stopping_patience=args.early_stopping_patience)],
     )
 
     # train model
@@ -126,7 +126,7 @@ def main(args):
     train_df, valid_df = train_test_split(train_dataset, test_size=0.2, shuffle=True, stratify=train_dataset['label'],
                                           random_state=args.seed)
 
-    train_df = add_trigger(train_df, args.rate, args.num_trigger, data_path)  # trigger 추가한 train data
+    train_df = add_trigger(train_df, args, data_path)  # trigger 추가한 train data
 
     # train, valid label setting
     train_label = train_df['label'].values
@@ -181,6 +181,8 @@ if __name__ == '__main__':
     parser.add_argument('--num_trigger', type=int, default=1, help='number of random choice trigger (default: 1)')
     parser.add_argument('--trigger_type', type=str, default='train_data',
                         help='when create trigger, using data (default: train_data)')
+    parser.add_argument('--plus_data', type=bool, default=False,
+                        help='train 데이터에 Adv example 을 더 추가 할지 train 데이터의 개수와 동일하게 맞출지 여부 (default: False)')
     parser.add_argument('--model_name_or_path', type=str, default='klue/roberta-base',
                         help='what kinds of models (default: klue/roberta-large)')
     parser.add_argument('--run_name', type=str, default='exp', help='name of the W&B run (default: exp)')

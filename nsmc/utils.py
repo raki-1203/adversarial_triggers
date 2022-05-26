@@ -18,6 +18,7 @@ from copy import deepcopy
 from operator import itemgetter
 from torch.utils.data import Dataset, DataLoader
 from sklearn.metrics import f1_score, accuracy_score
+from sklearn.model_selection import train_test_split
 
 
 # returns the wordpiece embedding weight matrix
@@ -232,23 +233,30 @@ def load_data(dataset_dir, is_train=True):
     return df
 
 
-def add_trigger(df, rate, num_trigger, data_path):
+def add_trigger(df, args, data_path):
     """ 데이터에 trigger 추가 """
     p2n_dict = load_pickle_file(os.path.join(data_path, 'trigger_dict'), 'train_data-trigger_accuracy_3word_p2n_dict')
     n2p_dict = load_pickle_file(os.path.join(data_path, 'trigger_dict'), 'train_data-trigger_accuracy_3word_n2p_dict')
     p2n_trigger_list = sorted(p2n_dict.items(), key=lambda x: x[1])
     n2p_trigger_list = sorted(n2p_dict.items(), key=lambda x: x[1])
-    pos2neg_trigger = [' '.join(trigger.split(',')) for trigger, _ in p2n_trigger_list][:num_trigger]
-    neg2pos_trigger = [' '.join(trigger.split(',')) for trigger, _ in n2p_trigger_list][:num_trigger]
+    pos2neg_trigger = [' '.join(trigger.split(',')) for trigger, _ in p2n_trigger_list][:args.num_trigger]
+    neg2pos_trigger = [' '.join(trigger.split(',')) for trigger, _ in n2p_trigger_list][:args.num_trigger]
+    if args.plus_data:
+        num_row = int(len(df) * args.rate)
+        adv_df = df.sample(num_row).copy()
 
-    num_row = int(len(df) * rate)
-    temp = df.sample(num_row).copy()
+        adv_df['document'] = adv_df.apply(
+            lambda x: np.random.choice(pos2neg_trigger) + ' ' + x['document']
+            if x['label'] == 1 else np.random.choice(neg2pos_trigger) + ' ' + x['document'], axis=1)
+    else:
+        df, temp_df = train_test_split(df, test_size=args.rate, shuffle=True, stratify=df['label'],
+                                       random_state=args.seed)
+        adv_df = temp_df.copy()
+        adv_df['document'] = adv_df.apply(
+            lambda x: np.random.choice(pos2neg_trigger) + ' ' + x['document']
+            if x['label'] == 1 else np.random.choice(neg2pos_trigger) + ' ' + x['document'], axis=1)
 
-    temp['document'] = temp.apply(
-        lambda x: np.random.choice(pos2neg_trigger) + ' ' + x['document']
-        if x['label'] == 1 else np.random.choice(neg2pos_trigger) + ' ' + x['document'], axis=1)
-
-    df = pd.concat([df, temp])
+    df = pd.concat([df, adv_df])
 
     return df
 

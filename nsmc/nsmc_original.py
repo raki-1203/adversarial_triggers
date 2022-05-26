@@ -97,7 +97,7 @@ def train(train_df, valid_df, train_label, valid_label, args):
         eval_dataset=valid_dataset if training_args.do_eval else None,
         data_collator=default_data_collator,
         compute_metrics=compute_metrics,
-        callbacks=[EarlyStoppingCallback(early_stopping_patience=args.early_stopping_patience)],
+        # callbacks=[EarlyStoppingCallback(early_stopping_patience=args.early_stopping_patience)],
     )
 
     # train model
